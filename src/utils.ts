@@ -249,6 +249,41 @@ export function parseBskyUrl(url: string): { handle: string, rkey: string } | nu
 }
 
 /**
+ * Find a record URI in a user's repo by collection and subject URI.
+ * Used for unlike, unrepost, unfollow where we need the record's own URI to delete it.
+ * @param agent The ATP agent instance
+ * @param repo The DID of the repo owner (usually the authenticated user)
+ * @param collection The NSID collection (e.g., 'app.bsky.feed.like')
+ * @param subjectUri The URI of the subject the record points to
+ * @returns The record URI (at://did/collection/rkey) or null if not found
+ */
+export async function findRecordUri(
+  agent: AtpAgent,
+  repo: string,
+  collection: string,
+  subjectUri: string
+): Promise<string | null> {
+  try {
+    let cursor: string | undefined;
+    do {
+      const response = await agent.com.atproto.repo.listRecords({
+        repo,
+        collection,
+        limit: 100,
+        cursor
+      });
+      if (!response.success) return null;
+      const match = response.data.records.find((r: any) => r.value?.subject?.uri === subjectUri);
+      if (match) return match.uri;
+      cursor = response.data.cursor;
+    } while (cursor);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Convert a Bluesky post URL to an AT URI
  * @param url The Bluesky web URL (e.g., https://bsky.app/profile/username.bsky.social/post/postid)
  * @param agent The AtpAgent instance to use for handle resolution

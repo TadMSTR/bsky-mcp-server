@@ -12,7 +12,8 @@ import {
   McpErrorResponse,
   McpSuccessResponse,
   escapeXml,
-  convertBskyUrlToAtUri
+  convertBskyUrlToAtUri,
+  findRecordUri
 } from './utils.js';
 import { preprocessPosts, formatPostThread } from "./llm-preprocessor.js";
 import { registerResources, resourcesList } from './resources.js';
@@ -1571,6 +1572,218 @@ Description: ${resource.description}
     }).join("\n\n");
 
     return mcpSuccessResponse(`Available MCP Resources:\n\n${formattedResources}\n\nTo use these resources, reference them by URI in your prompts or queries.`);
+  }
+);
+
+server.tool(
+  "repost",
+  "Repost a post on Bluesky",
+  {
+    uri: z.string().describe("The URI of the post to repost"),
+  },
+  async ({ uri }) => {
+    if (!agent) {
+      return mcpErrorResponse("Not logged in. Please check your environment variables.");
+    }
+    try {
+      const threadResponse = await agent.app.bsky.feed.getPostThread({ uri });
+      if (!threadResponse.success || threadResponse.data.thread.$type !== 'app.bsky.feed.defs#threadViewPost') {
+        return mcpErrorResponse("Failed to get post information.");
+      }
+      const post = (threadResponse.data.thread as any).post;
+      await agent.repost(uri, post.cid);
+      return mcpSuccessResponse("Post reposted successfully!");
+    } catch (error) {
+      return mcpErrorResponse(`Error reposting: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+server.tool(
+  "delete-post",
+  "Delete one of your posts on Bluesky",
+  {
+    uri: z.string().describe("The URI of the post to delete (must be your own post)"),
+  },
+  async ({ uri }) => {
+    if (!agent) {
+      return mcpErrorResponse("Not logged in. Please check your environment variables.");
+    }
+    try {
+      await agent.deletePost(uri);
+      return mcpSuccessResponse("Post deleted successfully.");
+    } catch (error) {
+      return mcpErrorResponse(`Error deleting post: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+server.tool(
+  "unlike",
+  "Remove a like from a post on Bluesky",
+  {
+    uri: z.string().describe("The URI of the post to unlike"),
+  },
+  async ({ uri }) => {
+    if (!agent) {
+      return mcpErrorResponse("Not logged in. Please check your environment variables.");
+    }
+    try {
+      const myDid = agent.session?.did;
+      if (!myDid) return mcpErrorResponse("Could not determine authenticated user DID.");
+      const likeUri = await findRecordUri(agent, myDid, 'app.bsky.feed.like', uri);
+      if (!likeUri) return mcpErrorResponse("No like found for that post — you may not have liked it.");
+      const parts = likeUri.split('/');
+      await agent.app.bsky.feed.like.delete({ repo: myDid, rkey: parts[parts.length - 1] });
+      return mcpSuccessResponse("Like removed successfully.");
+    } catch (error) {
+      return mcpErrorResponse(`Error unliking post: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+server.tool(
+  "unfollow",
+  "Unfollow a user on Bluesky",
+  {
+    handle: z.string().describe("The handle of the user to unfollow"),
+  },
+  async ({ handle }) => {
+    if (!agent) {
+      return mcpErrorResponse("Not logged in. Please check your environment variables.");
+    }
+    try {
+      const myDid = agent.session?.did;
+      if (!myDid) return mcpErrorResponse("Could not determine authenticated user DID.");
+      const resolveResponse = await agent.resolveHandle({ handle: cleanHandle(handle) });
+      if (!resolveResponse.success) return mcpErrorResponse(`Failed to resolve handle: ${handle}`);
+      const targetDid = resolveResponse.data.did;
+      // Follow records store the subject as a plain DID string, not a URI — check value.subject.did
+      let cursor: string | undefined;
+      let followRkey: string | null = null;
+      do {
+        const response = await agent.com.atproto.repo.listRecords({
+          repo: myDid,
+          collection: 'app.bsky.graph.follow',
+          limit: 100,
+          cursor
+        });
+        if (!response.success) break;
+        const match = response.data.records.find((r: any) => r.value?.subject === targetDid);
+        if (match) {
+          const parts = match.uri.split('/');
+          followRkey = parts[parts.length - 1];
+          break;
+        }
+        cursor = response.data.cursor;
+      } while (cursor);
+      if (!followRkey) return mcpErrorResponse(`You don't appear to follow @${handle}.`);
+      await agent.app.bsky.graph.follow.delete({ repo: myDid, rkey: followRkey });
+      return mcpSuccessResponse(`Unfollowed @${handle} successfully.`);
+    } catch (error) {
+      return mcpErrorResponse(`Error unfollowing: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+server.tool(
+  "get-blocks",
+  "Get the list of accounts you have blocked on Bluesky",
+  {
+    limit: z.number().min(1).max(100).default(100).describe("Maximum number of blocked accounts to fetch (1-100)"),
+  },
+  async ({ limit }) => {
+    if (!agent) {
+      return mcpErrorResponse("Not logged in. Please check your environment variables.");
+    }
+    try {
+      const response = await agent.app.bsky.graph.getBlocks({ limit });
+      if (!response.success) return mcpErrorResponse("Failed to fetch block list.");
+      const { blocks } = response.data;
+      if (!blocks || blocks.length === 0) return mcpSuccessResponse("You have no blocked accounts.");
+      const formatted = blocks.map((actor: any, i: number) =>
+        `#${i + 1}: ${actor.displayName || actor.handle} (@${actor.handle})\n  DID: ${actor.did}`
+      ).join("\n\n");
+      return mcpSuccessResponse(`Blocked accounts (${blocks.length}):\n\n${formatted}${response.data.cursor ? '\n\nMore results available.' : ''}`);
+    } catch (error) {
+      return mcpErrorResponse(`Error fetching blocks: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+server.tool(
+  "get-mutes",
+  "Get the list of accounts you have muted on Bluesky",
+  {
+    limit: z.number().min(1).max(100).default(100).describe("Maximum number of muted accounts to fetch (1-100)"),
+  },
+  async ({ limit }) => {
+    if (!agent) {
+      return mcpErrorResponse("Not logged in. Please check your environment variables.");
+    }
+    try {
+      const response = await agent.app.bsky.graph.getMutes({ limit });
+      if (!response.success) return mcpErrorResponse("Failed to fetch mute list.");
+      const { mutes } = response.data;
+      if (!mutes || mutes.length === 0) return mcpSuccessResponse("You have no muted accounts.");
+      const formatted = mutes.map((actor: any, i: number) =>
+        `#${i + 1}: ${actor.displayName || actor.handle} (@${actor.handle})\n  DID: ${actor.did}`
+      ).join("\n\n");
+      return mcpSuccessResponse(`Muted accounts (${mutes.length}):\n\n${formatted}${response.data.cursor ? '\n\nMore results available.' : ''}`);
+    } catch (error) {
+      return mcpErrorResponse(`Error fetching mutes: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+server.tool(
+  "get-reposts",
+  "Get a list of users who reposted a specific post",
+  {
+    uri: z.string().describe("The URI of the post to get reposts for"),
+    limit: z.number().min(1).max(100).default(100).describe("Maximum number of reposts to fetch (1-100)"),
+  },
+  async ({ uri, limit }) => {
+    if (!agent) {
+      return mcpErrorResponse("Not logged in. Please check your environment variables.");
+    }
+    try {
+      const response = await agent.app.bsky.feed.getRepostedBy({ uri, limit });
+      if (!response.success) return mcpErrorResponse("Failed to fetch reposts.");
+      const { repostedBy } = response.data;
+      if (!repostedBy || repostedBy.length === 0) return mcpSuccessResponse("No reposts found for this post.");
+      const formatted = repostedBy.map((actor: any, i: number) =>
+        `#${i + 1}: ${actor.displayName || actor.handle} (@${actor.handle})\n  DID: ${actor.did}`
+      ).join("\n\n");
+      return mcpSuccessResponse(`Reposted by (${repostedBy.length}):\n\n${formatted}${response.data.cursor ? '\n\nMore results available.' : ''}`);
+    } catch (error) {
+      return mcpErrorResponse(`Error fetching reposts: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+server.tool(
+  "get-quotes",
+  "Get a list of posts that quote a specific post",
+  {
+    uri: z.string().describe("The URI of the post to get quotes for"),
+    limit: z.number().min(1).max(100).default(20).describe("Maximum number of quote posts to fetch (1-100)"),
+  },
+  async ({ uri, limit }) => {
+    if (!agent) {
+      return mcpErrorResponse("Not logged in. Please check your environment variables.");
+    }
+    try {
+      const response = await agent.app.bsky.feed.getQuotes({ uri, limit });
+      if (!response.success) return mcpErrorResponse("Failed to fetch quotes.");
+      const { posts } = response.data;
+      if (!posts || posts.length === 0) return mcpSuccessResponse("No quote posts found for this post.");
+      const feedViewPosts = posts.map((post: any) => ({ post, reply: undefined, reason: undefined }));
+      const formatted = preprocessPosts(feedViewPosts);
+      return mcpSuccessResponse(`Quote posts (${posts.length}):\n\n${formatted}${response.data.cursor ? '\n\nMore results available.' : ''}`);
+    } catch (error) {
+      return mcpErrorResponse(`Error fetching quotes: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 );
 
