@@ -1,6 +1,6 @@
 # Bluesky MCP Server (TadMSTR Fork)
 
-> **This is an actively maintained fork of [brianellin/bsky-mcp-server](https://github.com/brianellin/bsky-mcp-server).** The upstream repository appears unmaintained as of early 2026. This fork adds bug fixes and features from open PRs that were never merged.
+> **This is an actively maintained fork of [brianellin/bsky-mcp-server](https://github.com/brianellin/bsky-mcp-server).** The upstream repository appears unmaintained as of early 2026. This fork adds bug fixes and features from open PRs that were never merged, plus additional tools not present in upstream.
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) server that connects to [Bluesky](https://bsky.app/) and provides tools to interact with the ATProtocol.
 
@@ -10,6 +10,12 @@ You can use this MCP server to bring context from various Bluesky / ATProtocol A
 
 - **Quote post support**: `create-post` now accepts an optional `quotePost` URI parameter to quote another post
 - **Automatic facet detection**: Uses `RichText.detectFacets()` from `@atproto/api` to automatically resolve mentions, hashtags, and URLs in posts so they render as proper links on Bluesky
+- **Repost / delete / unlike / unfollow**: Write actions beyond just posting and liking
+- **Block and mute lists**: `get-blocks` and `get-mutes` to inspect your moderation state
+- **Post engagement**: `get-reposts` and `get-quotes` to see who reposted or quoted a specific post
+- **Notifications**: `get-notifications` with optional type filtering
+- **Post likes**: `get-post-likes` to see who liked a specific post
+- **Trends**: `get-trends` with post counts and trending start times
 
 ## Features & Tools
 
@@ -20,26 +26,41 @@ You can use this MCP server to bring context from various Bluesky / ATProtocol A
 - Search for feeds, posts, and people ("Find posts about the #teslatakedown and give me a summary of recent events")
 - Analyze who follows you? ("Who follows me on Bluesky? Give me a report")
 
-Here's the current list of tools provided:
+### Reading
 
-- **get-pinned-feeds**: returns the set of all "pinned" items from the authenticated user's preferences.
+- **get-my-handle-and-did**: returns the handle and DID of the authenticated user
 - **get-timeline-posts**: returns posts from the authenticated user's home timeline
-- **get-feed-posts**: returns posts from the specified feed
-- **get-list-posts**: returns posts from the specified list
-- **get-user-posts**: returns the specified user's posts
-- **get-profile**: returns the profile details of the specified user
+- **get-notifications**: returns notifications, optionally filtered by type (reply, mention, like, repost, follow, quote)
+- **get-pinned-feeds**: returns all pinned feeds and lists from the authenticated user's preferences
+- **get-feed-posts**: returns posts from a specified feed
+- **get-list-posts**: returns posts from a specified list
+- **get-user-posts**: returns a specified user's posts
+- **get-profile**: returns profile details for a specified user
 - **get-follows**: returns the set of users an account follows
 - **get-followers**: returns the set of users who follow an account
 - **get-liked-posts**: returns recent posts liked by the authenticated user
-- **get-trends**: returns current trending topics on Bluesky with post counts
+- **get-post-likes**: returns users who liked a specific post
+- **get-reposts**: returns users who reposted a specific post
+- **get-quotes**: returns posts that quote a specific post
 - **get-post-thread**: returns a full conversation thread for a specific post, showing all replies and context
-- **convert-url-to-uri**: converts a Bluesky web URL to an AT URI format that can be used with other tools
-- **search-posts**: returns posts for a given query. can specify top or latest
+- **get-trends**: returns current trending topics on Bluesky with post counts and trending start times
+- **get-blocks**: returns the list of accounts you have blocked
+- **get-mutes**: returns the list of accounts you have muted
+- **search-posts**: returns posts for a given query; can specify top or latest
 - **search-people**: returns people for a given search query
 - **search-feeds**: returns feeds for a given query
-- **like-post**: like a post with a specific URI
+- **convert-url-to-uri**: converts a Bluesky web URL to an AT URI for use with other tools
+- **list-resources**: lists available MCP resources with descriptions
+
+### Writing
+
 - **create-post**: publish a post, with optional reply and quote post support; facets (mentions, hashtags, URLs) are auto-detected
+- **repost**: repost a specific post
+- **delete-post**: delete one of your own posts
+- **like-post**: like a specific post
+- **unlike**: remove a like from a post
 - **follow-user**: follow a specific user
+- **unfollow**: unfollow a specific user
 
 Tips:
 - You can ask for posts from search, timelines, lists, feeds, or profiles by time range. For example: "Summarize posts from my timeline for the last three days" or "Find me the most interesting article people have been talking about this week"
@@ -55,10 +76,10 @@ Clone this repo, then install dependencies and build the server:
 
 ```bash
 # Install dependencies
-pnpm install
+npm install
 
 # Build the project
-pnpm run build
+npm run build
 ```
 
 ### Testing with MCP Inspector
