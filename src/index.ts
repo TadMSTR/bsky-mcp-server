@@ -1600,6 +1600,30 @@ server.tool(
 );
 
 server.tool(
+  "delete-repost",
+  "Remove a repost on Bluesky",
+  {
+    uri: z.string().describe("The URI of the post to un-repost"),
+  },
+  async ({ uri }) => {
+    if (!agent) {
+      return mcpErrorResponse("Not logged in. Please check your environment variables.");
+    }
+    try {
+      const myDid = agent.session?.did;
+      if (!myDid) return mcpErrorResponse("Could not determine authenticated user DID.");
+      const repostUri = await findRecordUri(agent, myDid, 'app.bsky.feed.repost', uri);
+      if (!repostUri) return mcpErrorResponse("No repost found for that post — you may not have reposted it.");
+      const parts = repostUri.split('/');
+      await agent.app.bsky.feed.repost.delete({ repo: myDid, rkey: parts[parts.length - 1] });
+      return mcpSuccessResponse("Repost removed successfully.");
+    } catch (error) {
+      return mcpErrorResponse(`Error removing repost: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+server.tool(
   "delete-post",
   "Delete one of your posts on Bluesky",
   {
