@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { AtpAgent } from "@atproto/api";
+import { AtpAgent, RichText } from "@atproto/api";
 import * as dotenv from "dotenv";
 import {  
   cleanHandle,
@@ -215,8 +215,9 @@ server.tool(
   {
     text: z.string().max(300).describe("The content of your post"),
     replyTo: z.string().optional().describe("Optional URI of post to reply to"),
+    quotePost: z.string().optional().describe("Optional URI of post to quote"),
   },
-  async ({ text, replyTo }) => {
+  async ({ text, replyTo, quotePost }) => {
     if (!agent) {
       return mcpErrorResponse("Not connected to Bluesky. Check your environment variables.");
     }
@@ -255,6 +256,34 @@ server.tool(
           return mcpErrorResponse(`Error parsing reply URI: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
+
+      if (quotePost) {
+        // Handle quote post format
+        try {
+          const cidResponse = await agent.app.bsky.feed.getPostThread({ uri: quotePost });
+          if (!cidResponse.success) {
+            throw new Error('Could not get post information');
+          }
+
+          const threadPost = cidResponse.data.thread as any;
+          const quoteCid = threadPost.post.cid;
+
+          // Add embed for quote post
+          record.embed = {
+            $type: 'app.bsky.embed.record',
+            record: { uri: quotePost, cid: quoteCid }
+          };
+
+        } catch (error) {
+          return mcpErrorResponse(`Error parsing quote post URI: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      // Detect facets (hashtags, mentions, URLs) via RichText
+      const rt = new RichText({ text: record.text });
+      await rt.detectFacets(agent);
+      record.text = rt.text;
+      record.facets = rt.facets;
 
       const response = await agent.post(record);
       
