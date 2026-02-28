@@ -1,10 +1,15 @@
-# Bluesky MCP Server
+# Bluesky MCP Server (TadMSTR Fork)
 
-[![smithery badge](https://smithery.ai/badge/@brianellin/bsky-mcp-server)](https://smithery.ai/server/@brianellin/bsky-mcp-server)
+> **This is an actively maintained fork of [brianellin/bsky-mcp-server](https://github.com/brianellin/bsky-mcp-server).** The upstream repository appears unmaintained as of early 2026. This fork adds bug fixes and features from open PRs that were never merged.
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) server that connects to [Bluesky](https://bsky.app/) and provides tools to interact with the ATProtocol.
 
-You can use this MCP server to bring context from various Bluesky / ATProtocol API endpoints directly into the context window of your LLM based application. For example, you can add this server to Claude Desktop and then use it as a natural language Bluesky client. 
+You can use this MCP server to bring context from various Bluesky / ATProtocol API endpoints directly into the context window of your LLM based application. For example, you can add this server to Claude Desktop and then use it as a natural language Bluesky client.
+
+## Changes in this fork
+
+- **Quote post support**: `create-post` now accepts an optional `quotePost` URI parameter to quote another post
+- **Automatic facet detection**: Uses `RichText.detectFacets()` from `@atproto/api` to automatically resolve mentions, hashtags, and URLs in posts so they render as proper links on Bluesky
 
 ## Features & Tools
 
@@ -33,27 +38,20 @@ Here's the current list of tools provided:
 - **search-people**: returns people for a given search query
 - **search-feeds**: returns feeds for a given query
 - **like-post**: like a post with a specific URI
-- **create-post**: publish a post 
+- **create-post**: publish a post, with optional reply and quote post support; facets (mentions, hashtags, URLs) are auto-detected
 - **follow-user**: follow a specific user
 
 Tips:
-- You can ask for post from search, timelines, lists, feeds, or profiles by time range. For example: Summarize posts from my timeline for the last three days" or "Find me the most interesting article people have been talking about this week"
-- Get weird: "What the funniest/most unhinged/weirdest/goofiest post you've seen on my timeline in the last 24 hours?"
+- You can ask for posts from search, timelines, lists, feeds, or profiles by time range. For example: "Summarize posts from my timeline for the last three days" or "Find me the most interesting article people have been talking about this week"
+- Get weird: "What's the funniest/most unhinged/weirdest/goofiest post you've seen on my timeline in the last 24 hours?"
 - Learn about yourself: "Analyze my liked posts and tell me what I'm into. Give me 3 interesting facts about what you've found and how it relates to my personality on bluesky" or "Who follows me on bluesky? Give me a comprehensive report."
 
 
 ## Installation
 
-### Installing via Smithery
-
-To install Bluesky MCP Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@brianellin/bsky-mcp-server):
-
-```bash
-npx -y @smithery/cli install @brianellin/bsky-mcp-server --client claude
-```
-
 ### Installing Manually
-First clone this repo, then install dependencies and build the server:
+
+Clone this repo, then install dependencies and build the server:
 
 ```bash
 # Install dependencies
@@ -71,11 +69,11 @@ You can test the bluesky tools directly without connecting to an LLM via the ama
 npx @modelcontextprotocol/inspector node build/src/index.js
 ```
 
-Navigate to the local URL provided in your terminal, and then set your BLUESKY_IDENTIFIER, BLUESKY_APP_PASSWORD, and BLUESKY_SERVICE_URL environment variables from the panel on the left. Try the get-timeline tool to see the most recent posts from your home timeline. 
+Navigate to the local URL provided in your terminal, and then set your BLUESKY_IDENTIFIER, BLUESKY_APP_PASSWORD, and BLUESKY_SERVICE_URL environment variables from the panel on the left. Try the get-timeline tool to see the most recent posts from your home timeline.
 
-## MCP Client Configuration 
+## MCP Client Configuration
 
-Follow the steps to set up MCP with your client of choice. For example, to set up Claude for desktop to connect to Bluesky, add the following to bluesky section to your claude_desktop_config.json:
+Follow the steps to set up MCP with your client of choice. For example, to set up Claude for desktop to connect to Bluesky, add the following bluesky section to your `claude_desktop_config.json`:
 
 ```json
 {
