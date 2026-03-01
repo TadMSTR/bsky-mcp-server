@@ -294,8 +294,13 @@ server.tool(
     text: z.string().max(300).describe("The content of your post"),
     replyTo: z.string().optional().describe("Optional URI of post to reply to"),
     quotePost: z.string().optional().describe("Optional URI of post to quote"),
+    images: z.array(z.object({
+      data: z.string().describe("Base64 encoded image data"),
+      encoding: z.string().describe("Image MIME type (e.g. image/png, image/jpeg)"),
+      alt: z.string().optional().describe("Alt text for the image"),
+    })).max(4).optional().describe("Optional array of images to attach (max 4)"),
   },
-  async ({ text, replyTo, quotePost }) => {
+  async ({ text, replyTo, quotePost, images }) => {
     if (!agent) {
       return mcpErrorResponse("Not connected to Bluesky. Check your environment variables.");
     }
@@ -370,6 +375,44 @@ server.tool(
 
         } catch (error) {
           return mcpErrorResponse(`Error parsing quote post URI: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      // Handle image uploads
+      if (images && images.length > 0) {
+        try {
+          const currentAgent = agent;
+          const uploadedImages = await Promise.all(
+            images.map(async (img) => {
+              const buffer = Buffer.from(img.data, 'base64');
+              const uploadResponse = await currentAgent.uploadBlob(buffer, { encoding: img.encoding });
+              if (!uploadResponse.success) {
+                throw new Error('Failed to upload image blob');
+              }
+              return {
+                image: uploadResponse.data.blob,
+                alt: img.alt ?? '',
+              };
+            })
+          );
+
+          const imagesEmbed = {
+            $type: 'app.bsky.embed.images',
+            images: uploadedImages,
+          };
+
+          if (record.embed) {
+            // Already have a quote post embed — wrap both in recordWithMedia
+            record.embed = {
+              $type: 'app.bsky.embed.recordWithMedia',
+              record: record.embed,
+              media: imagesEmbed,
+            };
+          } else {
+            record.embed = imagesEmbed;
+          }
+        } catch (error) {
+          return mcpErrorResponse(`Error uploading images: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
 
